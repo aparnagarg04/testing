@@ -259,7 +259,7 @@ class Component {
 
     this.values = {
       state: Constants.ComponentState.DEFAULT,
-      button: (this.gamepadIndices.button !== undefined) ? 0 : undefined,
+      button: (this.Indices.button !== undefined) ? 0 : undefined,
       xAxis: (this.gamepadIndices.xAxis !== undefined) ? 0 : undefined,
       yAxis: (this.gamepadIndices.yAxis !== undefined) ? 0 : undefined
     };

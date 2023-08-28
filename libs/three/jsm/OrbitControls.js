@@ -7,6 +7,8 @@ import {
 	Vector2,
 	Vector3
 } from '../three.module.js';
+import {passes} from './passes.js';
+
 
 // This set of controls performs orbiting, dollying (zooming), and panning.
 // Unlike TrackballControls, it maintains the "up" direction object.up (+Y by default).
@@ -15,7 +17,12 @@ import {
 //    Zoom - middle mouse, or mousewheel / touch: two-finger spread or squish
 //    Pan - right mouse, or left mouse + ctrl/meta/shiftKey, or arrow keys / touch: two-finger move
 
+
+
 var OrbitControls = function ( object, domElement ) {
+
+
+
 
 	if ( domElement === undefined ) console.warn( 'THREE.OrbitControls: The second parameter "domElement" is now mandatory.' );
 	if ( domElement === document ) console.error( 'THREE.OrbitControls: "document" should not be used as the target "domElement". Please use "renderer.domElement" instead.' );
@@ -73,7 +80,7 @@ var OrbitControls = function ( object, domElement ) {
 	this.autoRotateSpeed = 2.0; // 30 seconds per orbit when fps is 60
 
 	// The four arrow keys
-	this.keys = { LEFT: 'ArrowLeft', UP: 'ArrowUp', RIGHT: 'ArrowRight', BOTTOM: 'ArrowDown' };
+	this.keys = { LEFT: 'a', UP: 'ArrowUp', RIGHT: 'ArrowRight', BOTTOM: 'ArrowDown' };
 
 	// Mouse buttons
 	this.mouseButtons = { LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.PAN };
@@ -111,6 +118,7 @@ var OrbitControls = function ( object, domElement ) {
 		this._domElementKeyEvents = domElement;
 
 	};
+
 
 	this.saveState = function () {
 
@@ -628,6 +636,7 @@ var OrbitControls = function ( object, domElement ) {
 			scope.update();
 
 		}
+		
 
 
 	}

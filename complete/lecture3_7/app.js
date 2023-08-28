@@ -36,6 +36,16 @@ class App{
         this.controls.update();
         
         this.stats = new Stats();
+
+
+        this.keysPressed = {};
+        this.mouseMovement = new THREE.Vector2();
+        this.cameraQuaternion = new THREE.Quaternion();
+        // Add event listeners for keyboard and mouse inputs
+        window.addEventListener('keydown', this.onKeyDown.bind(this), false);
+        window.addEventListener('keyup', this.onKeyUp.bind(this), false);
+        window.addEventListener('mousemove', this.onMouseMove.bind(this), false);
+
         
         this.raycaster = new THREE.Raycaster();
         this.workingMatrix = new THREE.Matrix4();
@@ -50,6 +60,61 @@ class App{
         this.renderer.setAnimationLoop( this.render.bind(this) );
 	}	
     
+    onKeyDown(event) {
+        this.keysPressed[event.key] = true;
+        this.handleMovement();
+    }
+
+    onKeyUp(event) {
+        
+         // Mark the released key as false in the keysPressed map
+         this.keysPressed[event.key] = false;
+
+         // Handle movement based on the pressed keys
+         this.handleMovement();
+    }
+    handleMovement() {
+        const speed = 0.2; // Adjust movement speed
+        const direction = new THREE.Vector3();
+
+           // Handle movement based on the pressed keys
+    if (this.keysPressed['w']) {
+        // Move forward in the direction the camera is facing
+        this.dolly.position.add(this.camera.getWorldDirection(direction).multiplyScalar(speed));
+    }
+    if (this.keysPressed['s']) {
+        // Move backward
+        this.dolly.position.add(this.camera.getWorldDirection(direction).multiplyScalar(-speed));
+    }
+    if (this.keysPressed['a']) {
+        // Strafe left
+        direction.set(-1, 0, 0);
+        this.dolly.position.add(direction.applyQuaternion(this.cameraQuaternion).normalize().multiplyScalar(speed));
+    }
+    if (this.keysPressed['d']) {
+        // Strafe right
+        direction.set(1, 0, 0);
+        this.dolly.position.add(direction.applyQuaternion(this.cameraQuaternion).normalize().multiplyScalar(speed));
+    }
+    }
+
+    onMouseMove(event) {
+        // Calculate mouse movement since the last frame
+        this.mouseMovement.x = event.movementX || 0;
+        this.mouseMovement.y = event.movementY || 0;
+
+        // Update camera rotation based on mouse movement
+        const sensitivity = 0.002; // Adjust sensitivity
+        this.camera.rotation.y -= this.mouseMovement.x * sensitivity;
+        this.dummyCam.rotation.x -= this.mouseMovement.y * sensitivity;
+
+        // Clamp vertical rotation to prevent camera flipping
+        const maxVerticalRotation = Math.PI / 2 - 0.1;
+        this.dummyCam.rotation.x = Math.max(-maxVerticalRotation, Math.min(maxVerticalRotation, this.dummyCam.rotation.x));
+    
+        this.cameraQuaternion.copy(this.camera.quaternion);
+    }
+
     random( min, max ){
         return Math.random() * (max-min) + min;
     }
@@ -112,13 +177,20 @@ class App{
         this.controller = this.renderer.xr.getController( 0 );
         this.controller.addEventListener( 'selectstart', onSelectStart );
         this.controller.addEventListener( 'selectend', onSelectEnd );
-        this.controller.addEventListener( 'connected', function ( event ) {
+        // this.controller.addEventListener( 'connected', function ( event ) {
 
-            const mesh = self.buildController.call(self, event.data );
-            mesh.scale.z = 0;
-            this.add( mesh );
+        //     const mesh = self.buildController.call(self, event.data );
+        //     mesh.scale.z = 0;
+        //     this.add( mesh );
 
-        } );
+        // } );
+        this.controller.addEventListener( 'connected', ( event )=> {
+            if('gamepad' in event.data){
+                if('axes' in event.data.gamepad){ //we have a modern controller
+                    this.controller.gamepad = event.data.gamepad;
+                }
+            }
+        });
         this.controller.addEventListener( 'disconnected', function () {
 
             this.remove( this.children[ 0 ] );
@@ -131,6 +203,7 @@ class App{
         const controllerModelFactory = new XRControllerModelFactory();
 
         this.controllerGrip = this.renderer.xr.getControllerGrip( 0 );
+        // this.controllerGrip = this.renderer.xr.getControllerGrip( 1 );
         this.controllerGrip.add( controllerModelFactory.createControllerModel( this.controllerGrip ) );
         this.scene.add( this.controllerGrip );
         
@@ -170,63 +243,87 @@ class App{
     }
     
     handleController( controller, dt ){
-        if (controller.userData.selectPressed ){
+        if (controller.gamepad) {
+            const thumbstickX = controller.gamepad.axes[2]; // Horizontal axis of thumbstick
+            const thumbstickY = controller.gamepad.axes[3]; // Vertical axis of thumbstick
+
+            // Use thumbstick input for movement
+            const speed = 0.2;
+            const direction = new THREE.Vector3();
+            direction.set(-thumbstickX, 0, -thumbstickY);
+            direction.normalize();
+            direction.multiplyScalar(speed);
+            this.dolly.position.add(direction);
+
             
-            const wallLimit = 1.3;
-            const speed = 2;
-            let pos = this.dolly.position.clone();
-            pos.y += 1;
-
-            let dir = new THREE.Vector3();
-            //Store original dolly rotation
-            const quaternion = this.dolly.quaternion.clone();
-            //Get rotation for movement from the headset pose
-            this.dolly.quaternion.copy( this.dummyCam.getWorldQuaternion() );
-            this.dolly.getWorldDirection(dir);
-            dir.negate();
-            this.raycaster.set(pos, dir);
-
-            let blocked = false;
-
-            let intersect = this.raycaster.intersectObjects(this.colliders);
-            if (intersect.length>0){
-                if (intersect[0].distance < wallLimit) blocked = true;
-            }
-
-            if (!blocked){
-                this.dolly.translateZ(-dt*speed);
-                pos = this.dolly.getWorldPosition( this.origin );
-            }
-
-            //cast left
-            dir.set(-1,0,0);
-            dir.applyMatrix4(this.dolly.matrix);
-            dir.normalize();
-            this.raycaster.set(pos, dir);
-
-            intersect = this.raycaster.intersectObjects(this.colliders);
-            if (intersect.length>0){
-                if (intersect[0].distance<wallLimit) this.dolly.translateX(wallLimit-intersect[0].distance);
-            }
-
-            //cast right
-            dir.set(1,0,0);
-            dir.applyMatrix4(this.dolly.matrix);
-            dir.normalize();
-            this.raycaster.set(pos, dir);
-
-            intersect = this.raycaster.intersectObjects(this.colliders);
-            if (intersect.length>0){
-                if (intersect[0].distance<wallLimit) this.dolly.translateX(intersect[0].distance-wallLimit);
-            }
-
-            this.dolly.position.y = 0;
-
-            //Restore the original rotation
-            this.dolly.quaternion.copy( quaternion );
-   
         }
+        
+        
+        // if (controller.userData.selectPressed ){
+           
+        //     const wallLimit = 1.3;
+        //     const speed = 2;
+        //     let pos = this.dolly.position.clone();
+        //     pos.y += 1;
+
+        //     let dir = new THREE.Vector3();
+        //     //Store original dolly rotation
+        //     const quaternion = this.dolly.quaternion.clone();
+        //     //Get rotation for movement from the headset pose
+        //     this.dolly.quaternion.copy( this.dummyCam.getWorldQuaternion() );
+        //     this.dolly.getWorldDirection(dir);
+        //     dir.negate();
+        //     this.raycaster.set(pos, dir);
+
+        //     let blocked = false;
+
+        //     let intersect = this.raycaster.intersectObjects(this.colliders);
+        //     if (intersect.length>0){
+        //         if (intersect[0].distance < wallLimit) blocked = true;
+        //     }
+
+        //     if (!blocked){
+        //         this.dolly.translateZ(-dt*speed);
+        //         pos = this.dolly.getWorldPosition( this.origin );
+        //     }
+
+        //     //cast left
+        //     dir.set(-1,0,0);
+        //     dir.applyMatrix4(this.dolly.matrix);
+        //     dir.normalize();
+        //     this.raycaster.set(pos, dir);
+
+        //     intersect = this.raycaster.intersectObjects(this.colliders);
+        //     if (intersect.length>0){
+        //         if (intersect[0].distance<wallLimit) this.dolly.translateX(wallLimit-intersect[0].distance);
+        //     }
+
+        //     //cast right
+        //     dir.set(1,0,0);
+        //     dir.applyMatrix4(this.dolly.matrix);
+        //     dir.normalize();
+        //     this.raycaster.set(pos, dir);
+
+        //     intersect = this.raycaster.intersectObjects(this.colliders);
+        //     if (intersect.length>0){
+        //         if (intersect[0].distance<wallLimit) this.dolly.translateX(intersect[0].distance-wallLimit);
+        //     }
+
+        //     this.dolly.position.y = 0;
+
+        //     //Restore the original rotation
+        //     this.dolly.quaternion.copy( quaternion );
+   
+        // }
+
+        
+    
     }
+
+
+    
+    
+    
     
     resize(){
         this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -237,8 +334,13 @@ class App{
 	render( ) {  
         const dt = this.clock.getDelta();
         this.stats.update();
-        if (this.controller ) this.handleController( this.controller, dt );
+        if (this.controller ) {
+            this.handleController( this.controller, dt );
+        }
+        
+        
         this.renderer.render( this.scene, this.camera );
+
     }
 }
 
