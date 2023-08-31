@@ -1,0 +1,11 @@
+Model Information:
+* title:	Planetside 2 Prototype weapon
+* source:	https://sketchfab.com/3d-models/planetside-2-prototype-weapon-5bd50052b41e4b5a96b0c812598cf9b7
+* author:	laza (https://sketchfab.com/laza)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Planetside 2 Prototype weapon" (https://sketchfab.com/3d-models/planetside-2-prototype-weapon-5bd50052b41e4b5a96b0c812598cf9b7) by laza (https://sketchfab.com/laza) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

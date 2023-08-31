@@ -1,7 +1,16 @@
 import * as THREE from "../../libs/three/three.module.js";
-import { VRButton } from "../../libs/VRButton.js";
+import { GLTFLoader } from "../../libs/three/jsm/GLTFLoader.js";
+import { DRACOLoader } from "../../libs/three/jsm/DRACOLoader.js";
+import { RGBELoader } from "../../libs/three/jsm/RGBELoader.js";
 import { XRControllerModelFactory } from "../../libs/three/jsm/XRControllerModelFactory.js";
+import { Pathfinding } from "../../libs/pathfinding/Pathfinding.js";
 import { Stats } from "../../libs/stats.module.js";
+import { VRButton } from "../../libs/VRButton.js";
+import { TeleportMesh } from "../../libs/TeleportMesh.js";
+import { Interactable } from "../../libs/Interactable.js";
+import { Player } from "../../libs/Player.js";
+import { LoadingBar } from "../../libs/LoadingBar.js";
+import { Bullet } from "./Bullet.js";
 import { OrbitControls } from "../../libs/three/jsm/OrbitControls.js";
 
 class App {
@@ -22,6 +31,7 @@ class App {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x505050);
 
+    this.bullets = [];
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x404040));
 
     const light = new THREE.DirectionalLight(0xffffff);
@@ -112,13 +122,7 @@ class App {
           .multiplyScalar(speed)
       );
     }
-
- 
   }
-
-
-
-
 
   onMouseMove(event) {
     // Calculate mouse movement since the last frame
@@ -203,6 +207,7 @@ class App {
     this.controller = this.renderer.xr.getController(0);
     this.controller.addEventListener("selectstart", onSelectStart);
     this.controller.addEventListener("selectend", onSelectEnd);
+    
     // this.controller.addEventListener( 'connected', function ( event ) {
 
     //     const mesh = self.buildController.call(self, event.data );
@@ -229,9 +234,22 @@ class App {
 
     this.controllerGrip = this.renderer.xr.getControllerGrip(0);
     // this.controllerGrip = this.renderer.xr.getControllerGrip( 1 );
-    this.controllerGrip.add(
-      controllerModelFactory.createControllerModel(this.controllerGrip)
-    );
+    // this.controllerGrip.add(
+    //   controllerModelFactory.createControllerModel(this.controllerGrip)
+    // );
+
+    const loader = new GLTFLoader();
+    loader.load('../../assets/scene.gltf', (gltf) => {
+        const weaponModel = gltf.scene;
+
+        // Resize, position, and orient the weapon model as needed
+        weaponModel.scale.set(0.1, 0.1, 0.1);
+        weaponModel.position.set(0, -0.1, -0.3);
+        weaponModel.rotation.set(0, Math.PI, 0); // Adjust rotation as needed
+
+        // Attach the weapon model to the controllerGrip
+        this.controllerGrip.add(weaponModel);
+    });
     this.scene.add(this.controllerGrip);
 
     this.dolly = new THREE.Object3D();
@@ -242,6 +260,19 @@ class App {
     this.dummyCam = new THREE.Object3D();
     this.camera.add(this.dummyCam);
   }
+
+  onSelectStart(event) {
+    if (!this.controllerGrip) return;
+
+    const bullet = new Bullet(this.controllerGrip, {
+        gun: this.controllerGrip,
+        targets: this.colliders
+    });
+    
+    bullet.fire();
+    this.bullets.push(bullet);
+}
+
 
   buildController(data) {
     let geometry, material;
@@ -280,6 +311,9 @@ class App {
   }
 
   handleController(controller, dt) {
+    if (controller.userData.selectPressed){
+
+    }
     if (controller.gamepad) {
       const thumbstickX = controller.gamepad.axes[2]; // Horizontal axis of thumbstick
       const thumbstickY = controller.gamepad.axes[3]; // Vertical axis of thumbstick
@@ -287,8 +321,18 @@ class App {
       // Use thumbstick input for movement
       const speed = 0.15;
       const direction = new THREE.Vector3(thumbstickX, 0, thumbstickY);
+
+       // Get the headset's orientation
+    const headsetQuaternion = this.dummyCam.getWorldQuaternion();
+
+    // Rotate the movement direction using the headset's orientation
+    direction.applyQuaternion(headsetQuaternion);
+
+
       direction.normalize();
       direction.multiplyScalar(speed);
+
+      
 
       // Calculate the new position based on thumbstick input
       const newPos = this.dolly.position.clone().add(direction);
@@ -393,6 +437,9 @@ class App {
     if (this.controller) {
       this.handleController(this.controller, dt);
     }
+
+     // Update and render bullets
+     this.bullets.forEach(bullet => bullet.update(dt));
 
     this.renderer.render(this.scene, this.camera);
   }
