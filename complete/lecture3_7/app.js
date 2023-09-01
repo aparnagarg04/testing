@@ -243,12 +243,14 @@ class App {
         const weaponModel = gltf.scene;
 
         // Resize, position, and orient the weapon model as needed
-        weaponModel.scale.set(0.1, 0.1, 0.1);
+        weaponModel.scale.set(0.03, 0.03, 0.03);
         weaponModel.position.set(0, -0.1, -0.3);
         weaponModel.rotation.set(0, Math.PI, 0); // Adjust rotation as needed
 
+        this.camera.add(weaponModel);
+        this.weaponModel=weaponModel;
         // Attach the weapon model to the controllerGrip
-        this.controllerGrip.add(weaponModel);
+        // this.controllerGrip.add(weaponModel);
     });
     this.scene.add(this.controllerGrip);
 
@@ -311,9 +313,7 @@ class App {
   }
 
   handleController(controller, dt) {
-    if (controller.userData.selectPressed){
-
-    }
+    
     if (controller.gamepad) {
       const thumbstickX = controller.gamepad.axes[2]; // Horizontal axis of thumbstick
       const thumbstickY = controller.gamepad.axes[3]; // Vertical axis of thumbstick
@@ -347,6 +347,13 @@ class App {
       if (intersect.length > 0 && intersect[0].distance < wallLimit) {
         blocked = true;
       }
+
+      // Clamp the Y position within a range (e.g., between 0 and a maximum Y value)
+    const minY = 0; // Minimum Y value (ground level)
+    const maxY = 10; // Maximum Y value (adjust as needed)
+
+    newPos.y = Math.min(maxY, Math.max(minY, newPos.y));
+
 
       if (!blocked) {
         this.dolly.position.copy(newPos);
@@ -440,6 +447,13 @@ class App {
 
      // Update and render bullets
      this.bullets.forEach(bullet => bullet.update(dt));
+
+       // Update the position and orientation of the weapon model
+    if (this.weaponModel) {
+      // Set the weapon's position and orientation relative to the camera
+      this.weaponModel.position.set(0, -0.1, -0.15); // Adjust position as needed
+      this.weaponModel.rotation.set(0, Math.PI, 0); // Adjust rotation as needed
+  }
 
     this.renderer.render(this.scene, this.camera);
   }
