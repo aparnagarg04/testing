@@ -1,6 +1,6 @@
 import * as THREE from "../../libs/three/three.module.js";
 import { GLTFLoader } from "../../libs/three/jsm/GLTFLoader.js";
-// import { DRACOLoader } from "../../libs/three/jsm/DRACOLoader.js";
+import { DRACOLoader } from "../../libs/three/jsm/DRACOLoader.js";
 // import { RGBELoader } from "../../libs/three/jsm/RGBELoader.js";
 import { XRControllerModelFactory } from "../../libs/three/jsm/XRControllerModelFactory.js";
 // import { Pathfinding } from "../../libs/pathfinding/Pathfinding.js";
@@ -50,7 +50,7 @@ class App {
     this.controls.update();
 
     this.stats = new Stats();
-
+    this.shooting = false;
     this.keysPressed = {};
     this.mouseMovement = new THREE.Vector2();
     this.cameraQuaternion = new THREE.Quaternion();
@@ -58,11 +58,12 @@ class App {
     window.addEventListener("keydown", this.onKeyDown.bind(this), false);
     window.addEventListener("keyup", this.onKeyUp.bind(this), false);
     window.addEventListener("mousemove", this.onMouseMove.bind(this), false);
-
+    window.addEventListener("mousedown", this.onMouseDown.bind(this), false);
     this.raycaster = new THREE.Raycaster();
     this.workingMatrix = new THREE.Matrix4();
     this.workingVector = new THREE.Vector3();
     this.origin = new THREE.Vector3();
+    this.shootingCooldown = 0;
 
     this.initScene();
     this.setupVR();
@@ -72,6 +73,12 @@ class App {
     this.renderer.setAnimationLoop(this.render.bind(this));
   }
 
+  onMouseDown(event) {
+    if (event.button === 0) {
+      // Left mouse button (0) is clicked, trigger shooting
+      this.shoot();
+    }
+  }
   onKeyDown(event) {
     this.keysPressed[event.key] = true;
     this.handleMovement();
@@ -198,6 +205,9 @@ class App {
 
     function onSelectStart() {
       this.userData.selectPressed = true;
+      if (self.controller) {
+        self.shoot();
+      }
     }
 
     function onSelectEnd() {
@@ -207,14 +217,14 @@ class App {
     this.controller = this.renderer.xr.getController(0);
     this.controller.addEventListener("selectstart", onSelectStart);
     this.controller.addEventListener("selectend", onSelectEnd);
-    
-    // this.controller.addEventListener( 'connected', function ( event ) {
 
-    //     const mesh = self.buildController.call(self, event.data );
-    //     mesh.scale.z = 0;
-    //     this.add( mesh );
+    this.controller.addEventListener( 'connected', function ( event ) {
 
-    // } );
+        const mesh = self.buildController.call(self, event.data );
+        mesh.scale.z = 0;
+        this.add( mesh );
+
+    } );
     this.controller.addEventListener("connected", (event) => {
       if ("gamepad" in event.data) {
         if ("axes" in event.data.gamepad) {
@@ -238,19 +248,24 @@ class App {
     //   controllerModelFactory.createControllerModel(this.controllerGrip)
     // );
 
-    const loader = new GLTFLoader();
-    loader.load('../../assets/scene.gltf', (gltf) => {
-        const weaponModel = gltf.scene;
+    const loader = new GLTFLoader()
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath("../../libs/three/js/draco/");
+    loader.setDRACOLoader(dracoLoader);
 
-        // Resize, position, and orient the weapon model as needed
-        weaponModel.scale.set(0.03, 0.03, 0.03);
-        weaponModel.position.set(0, -0.1, -0.3);
-        weaponModel.rotation.set(0, Math.PI, 0); // Adjust rotation as needed
+    loader.load("../../assets/scene.gltf", (gltf) => {
+      const weaponModel = gltf.scene;
 
-        this.camera.add(weaponModel);
-        this.weaponModel=weaponModel;
-        // Attach the weapon model to the controllerGrip
-        // this.controllerGrip.add(weaponModel);
+      // Resize, position, and orient the weapon model as needed
+      weaponModel.scale.set(0.03, 0.03, 0.03);
+      weaponModel.position.set(0, -0.1, -0.3);
+      weaponModel.rotation.set(0, Math.PI, 0); // Adjust rotation as needed
+
+      this.camera.add(weaponModel);
+      this.weaponModel = weaponModel;
+
+      // Attach the weapon model to the controllerGrip
+      // this.controllerGrip.add(weaponModel);
     });
     this.scene.add(this.controllerGrip);
 
@@ -263,18 +278,70 @@ class App {
     this.camera.add(this.dummyCam);
   }
 
-  onSelectStart(event) {
-    if (!this.controllerGrip) return;
+  loadAudio() {
+    if (this.audioListener === undefined) {
+      this.audioListener = new THREE.AudioListener();
+      // add the listener to the camera
+      this.camera.add(this.audioListener);
+      this.sounds = {};
 
-    const bullet = new Bullet(this.controllerGrip, {
-        gun: this.controllerGrip,
-        targets: this.colliders
-    });
-    
-    bullet.fire();
-    this.bullets.push(bullet);
-}
+      this.audio = {
+        index: 0,
+        names: ["ambient", "shot", "snarl", "swish"],
+      };
+    }
 
+    const name = this.audio.names[this.audio.index];
+
+    const loader = new THREE.AudioLoader();
+    const self = this;
+
+    // load a resource
+    loader.load(
+      // resource URL
+      `sfx/${name}.mp3`,
+
+      // onLoad callback
+      function (audioBuffer) {
+        // set the audio object buffer to the loaded object
+        let snd;
+        if (name === "snarl") {
+          snd = new THREE.PositionalAudio(self.audioListener);
+        } else {
+          snd = new THREE.Audio(self.audioListener);
+          self.scene.add(snd);
+          if (name === "ambient") {
+            snd.setLoop(true);
+            snd.setVolume(0.5);
+          }
+        }
+        snd.setBuffer(audioBuffer);
+
+        // play the audio
+        if (name === "ambient") snd.play();
+
+        self.sounds[name] = snd;
+
+        self.audio.index++;
+
+        if (self.audio.index < self.audio.names.length) {
+          self.loadAudio();
+        }
+      },
+
+      // onProgress callback
+      function (xhr) {
+        const peraudio = 0.25 / self.audio.length;
+        self.loadingBar.progress =
+          (xhr.loaded / xhr.total + self.audio.index) * peraudio + 0.75;
+      },
+
+      // onError callback
+      function (err) {
+        console.log("An error happened");
+      }
+    );
+  }
 
   buildController(data) {
     let geometry, material;
@@ -311,9 +378,30 @@ class App {
         return new THREE.Mesh(geometry, material);
     }
   }
+  shoot() {
+    console.log('Shooting...');
+    if (this.shootingCooldown > 0) {
+      return; // Shooting cooldown still active
+    }
+
+    // Create a new bullet instance and fire it
+    const bullet = new Bullet(this.weaponModel, {
+      gun: this.weaponModel,
+      targets: this.colliders, // Adjust the targets as needed
+    });
+
+    bullet.fire();
+
+    // Store the bullet in your bullets array for later updates
+    this.bullets.push(bullet);
+
+    // Play a shooting sound effect (you can add sound handling code here)
+    // Set a shooting cooldown timer (adjust the cooldown time as needed)
+    const shootingCooldownTime = 0.5; // in seconds
+    this.shootingCooldown = shootingCooldownTime;
+  }
 
   handleController(controller, dt) {
-    
     if (controller.gamepad) {
       const thumbstickX = controller.gamepad.axes[2]; // Horizontal axis of thumbstick
       const thumbstickY = controller.gamepad.axes[3]; // Vertical axis of thumbstick
@@ -322,17 +410,14 @@ class App {
       const speed = 0.15;
       const direction = new THREE.Vector3(thumbstickX, 0, thumbstickY);
 
-       // Get the headset's orientation
-    const headsetQuaternion = this.dummyCam.getWorldQuaternion();
+      // Get the headset's orientation
+      const headsetQuaternion = this.dummyCam.getWorldQuaternion();
 
-    // Rotate the movement direction using the headset's orientation
-    direction.applyQuaternion(headsetQuaternion);
-
+      // Rotate the movement direction using the headset's orientation
+      direction.applyQuaternion(headsetQuaternion);
 
       direction.normalize();
       direction.multiplyScalar(speed);
-
-      
 
       // Calculate the new position based on thumbstick input
       const newPos = this.dolly.position.clone().add(direction);
@@ -349,11 +434,10 @@ class App {
       }
 
       // Clamp the Y position within a range (e.g., between 0 and a maximum Y value)
-    const minY = 0; // Minimum Y value (ground level)
-    const maxY = 10; // Maximum Y value (adjust as needed)
+      const minY = 2; // Minimum Y value (ground level)
+      const maxY = 5; // Maximum Y value (adjust as needed)
 
-    newPos.y = Math.min(maxY, Math.max(minY, newPos.y));
-
+      newPos.y = Math.min(maxY, Math.max(minY, newPos.y));
 
       if (!blocked) {
         this.dolly.position.copy(newPos);
@@ -441,19 +525,33 @@ class App {
   render() {
     const dt = this.clock.getDelta();
     this.stats.update();
-    if (this.controller) {
-      this.handleController(this.controller, dt);
+
+    // Update shooting cooldown timer
+    if (this.shootingCooldown > 0) {
+      this.shootingCooldown -= dt;
     }
 
-     // Update and render bullets
-     this.bullets.forEach(bullet => bullet.update(dt));
+    if (this.controller) {
+      this.handleController(this.controller, dt);
+      // Check if the trigger button is pressed for shooting in VR mode
+      if (this.controller.userData.selectPressed && !this.shooting) {
+        this.shoot();
+        this.shooting = true;
+      } else if (!this.controller.userData.selectPressed) {
+        this.shooting = false;
+      }
+    }
 
-       // Update the position and orientation of the weapon model
+  
+     // Update and render bullets
+     this.bullets.forEach((bullet) => bullet.update(this.clock.getDelta()));
+
+    // Update the position and orientation of the weapon model
     if (this.weaponModel) {
       // Set the weapon's position and orientation relative to the camera
       this.weaponModel.position.set(0, -0.1, -0.15); // Adjust position as needed
       this.weaponModel.rotation.set(0, Math.PI, 0); // Adjust rotation as needed
-  }
+    }
 
     this.renderer.render(this.scene, this.camera);
   }
