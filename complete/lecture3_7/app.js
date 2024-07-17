@@ -95,41 +95,73 @@ class App {
   handleMovement() {
     const speed = 0.2; // Adjust movement speed
     const direction = new THREE.Vector3();
-
+  
     // Handle movement based on the pressed keys
     if (this.keysPressed["w"]) {
       // Move forward in the direction the camera is facing
-      this.dolly.position.add(
+      const newPos = this.dolly.position.clone().add(
         this.camera.getWorldDirection(direction).multiplyScalar(speed)
       );
+      this.checkCollisionAndMove(newPos);
     }
     if (this.keysPressed["s"]) {
       // Move backward
-      this.dolly.position.add(
+      const newPos = this.dolly.position.clone().add(
         this.camera.getWorldDirection(direction).multiplyScalar(-speed)
       );
+      this.checkCollisionAndMove(newPos);
     }
     if (this.keysPressed["a"]) {
       // Strafe left
       direction.set(-1, 0, 0);
-      this.dolly.position.add(
+      const newPos = this.dolly.position.clone().add(
         direction
           .applyQuaternion(this.cameraQuaternion)
           .normalize()
           .multiplyScalar(speed)
       );
+      this.checkCollisionAndMove(newPos);
     }
     if (this.keysPressed["d"]) {
       // Strafe right
       direction.set(1, 0, 0);
-      this.dolly.position.add(
+      const newPos = this.dolly.position.clone().add(
         direction
           .applyQuaternion(this.cameraQuaternion)
           .normalize()
           .multiplyScalar(speed)
       );
+      this.checkCollisionAndMove(newPos);
     }
   }
+  
+  checkCollisionAndMove(newPos) {
+    // Perform collision detection before updating the position
+    const wallLimit = 1.3;
+    const raycaster = new THREE.Raycaster();
+    raycaster.set(newPos, this.camera.getWorldDirection(new THREE.Vector3()));
+  
+    let blocked = false;
+    const intersects = raycaster.intersectObjects(this.colliders);
+    if (intersects.length > 0) {
+      // Check distance to closest intersected object
+      const distance = intersects[0].distance;
+      if (distance < wallLimit) {
+        blocked = true;
+      }
+    }
+  
+    // Clamp the Y position within a range (e.g., between 0 and a maximum Y value)
+    const minY = 2; // Minimum Y value (ground level)
+    const maxY = 5; // Maximum Y value (adjust as needed)
+  
+    newPos.y = Math.min(maxY, Math.max(minY, newPos.y));
+  
+    if (!blocked) {
+      this.dolly.position.copy(newPos);
+    }
+  }
+  
 
   onMouseMove(event) {
     // Calculate mouse movement since the last frame
@@ -199,7 +231,7 @@ class App {
   setupVR() {
     this.renderer.xr.enabled = true;
 
-    const button = new VRButton(this.renderer);
+    // const button = new VRButton(this.renderer);
 
     const self = this;
 
