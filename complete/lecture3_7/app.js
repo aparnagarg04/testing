@@ -1,16 +1,8 @@
 import * as THREE from "../../libs/three/three.module.js";
 import { GLTFLoader } from "../../libs/three/jsm/GLTFLoader.js";
 import { DRACOLoader } from "../../libs/three/jsm/DRACOLoader.js";
-// import { RGBELoader } from "../../libs/three/jsm/RGBELoader.js";
 import { XRControllerModelFactory } from "../../libs/three/jsm/XRControllerModelFactory.js";
-// import { Pathfinding } from "../../libs/pathfinding/Pathfinding.js";
 import { Stats } from "../../libs/stats.module.js";
-
-// import { TeleportMesh } from "../../libs/TeleportMesh.js";
-// import { Interactable } from "../../libs/Interactable.js";
-// import { Player } from "../../libs/Player.js";
-// import { LoadingBar } from "../../libs/LoadingBar.js";
-import { Bullet } from "./Bullet.js";
 import { OrbitControls } from "../../libs/three/jsm/OrbitControls.js";
 
 class App {
@@ -54,21 +46,19 @@ class App {
     this.keysPressed = {};
     this.mouseMovement = new THREE.Vector2();
     this.cameraQuaternion = new THREE.Quaternion();
-    // Add event listeners for keyboard and mouse inputs
+
     window.addEventListener("keydown", this.onKeyDown.bind(this), false);
     window.addEventListener("keyup", this.onKeyUp.bind(this), false);
     window.addEventListener("mousemove", this.onMouseMove.bind(this), false);
     window.addEventListener("mousedown", this.onMouseDown.bind(this), false);
-    this.raycaster = new THREE.Raycaster();
-    this.workingMatrix = new THREE.Matrix4();
-    this.workingVector = new THREE.Vector3();
-    this.origin = new THREE.Vector3();
-    this.shootingCooldown = 0;
+    window.addEventListener("resize", this.resize.bind(this));
+
+    this.colliders = [];
+    this.characterBox = new THREE.Box3(); // Bounding box for character
+    this.colliderBoxes = []; // Array to hold bounding boxes of colliders
 
     this.initScene();
     this.setupVR();
-
-    window.addEventListener("resize", this.resize.bind(this));
 
     this.renderer.setAnimationLoop(this.render.bind(this));
   }
@@ -79,101 +69,74 @@ class App {
       this.shoot();
     }
   }
+
   onKeyDown(event) {
     this.keysPressed[event.key] = true;
     this.handleMovement();
   }
 
   onKeyUp(event) {
-    // Mark the released key as false in the keysPressed map
     this.keysPressed[event.key] = false;
-
-    // Handle movement based on the pressed keys
     this.handleMovement();
   }
 
   handleMovement() {
     const speed = 0.5; // Adjust movement speed
     const direction = new THREE.Vector3();
-  
-    // Handle movement based on the pressed keys
+
     if (this.keysPressed["w"]) {
-      // Move forward in the direction the camera is facing
-      const newPos = this.dolly.position.clone().add(
-        this.camera.getWorldDirection(direction).multiplyScalar(speed)
-      );
-      this.checkCollisionAndMove(newPos);
+      // Move forward
+      direction.set(0, 0, -1);
+      this.moveWithCollision(direction, speed);
     }
     if (this.keysPressed["s"]) {
       // Move backward
-      const newPos = this.dolly.position.clone().add(
-        this.camera.getWorldDirection(direction).multiplyScalar(-speed)
-      );
-      this.checkCollisionAndMove(newPos);
+      direction.set(0, 0, 1);
+      this.moveWithCollision(direction, speed);
     }
     if (this.keysPressed["a"]) {
-      // Strafe left
+      // Move left
       direction.set(-1, 0, 0);
-      const newPos = this.dolly.position.clone().add(
-        direction
-          .applyQuaternion(this.cameraQuaternion)
-          .normalize()
-          .multiplyScalar(speed)
-      );
-      this.checkCollisionAndMove(newPos);
+      this.moveWithCollision(direction, speed);
     }
     if (this.keysPressed["d"]) {
-      // Strafe right
+      // Move right
       direction.set(1, 0, 0);
-      const newPos = this.dolly.position.clone().add(
-        direction
-          .applyQuaternion(this.cameraQuaternion)
-          .normalize()
-          .multiplyScalar(speed)
-      );
-      this.checkCollisionAndMove(newPos);
+      this.moveWithCollision(direction, speed);
     }
   }
-  
-  checkCollisionAndMove(newPos) {
-    // Perform collision detection before updating the position
-    const wallLimit = 1.3;
-    const raycaster = new THREE.Raycaster();
-    raycaster.set(newPos, this.camera.getWorldDirection(new THREE.Vector3()));
-  
-    let blocked = false;
-    const intersects = raycaster.intersectObjects(this.colliders);
-    if (intersects.length > 0) {
-      // Check distance to closest intersected object
-      const distance = intersects[0].distance;
-      if (distance < wallLimit) {
-        blocked = true;
+
+  moveWithCollision(direction, speed) {
+    const newPos = this.dolly.position.clone().add(
+      direction
+        .applyQuaternion(this.cameraQuaternion)
+        .normalize()
+        .multiplyScalar(speed)
+    );
+
+    // Update character's bounding box with new position
+    this.characterBox.setFromCenterAndSize(newPos, new THREE.Vector3(0.25,0.5,0.25)); // Adjust size as per character's dimensions
+
+    // Check for collisions with each collider's bounding box
+    for (let i = 0; i < this.colliderBoxes.length; i++) {
+      if (this.characterBox.intersectsBox(this.colliderBoxes[i])) {
+        // Collision detected, prevent movement
+        return;
       }
     }
-  
-    // Clamp the Y position within a range (e.g., between 0 and a maximum Y value)
-    const minY = 2; // Minimum Y value (ground level)
-    const maxY = 5; // Maximum Y value (adjust as needed)
-  
-    newPos.y = Math.min(maxY, Math.max(minY, newPos.y));
-  
-    if (!blocked) {
-      this.dolly.position.copy(newPos);
-    }
+
+    // If no collisions, update character position
+    this.dolly.position.copy(newPos);
   }
-  
 
   onMouseMove(event) {
-    // Calculate mouse movement since the last frame
     this.mouseMovement.x = event.movementX || 0;
     this.mouseMovement.y = event.movementY || 0;
 
-    // Update camera rotation based on mouse movement
-    const sensitivity = 0.002; // Adjust sensitivity
+    const sensitivity = 0.002;
     this.camera.rotation.y -= this.mouseMovement.x * sensitivity;
     this.dummyCam.rotation.x -= this.mouseMovement.y * sensitivity;
 
-    // Clamp vertical rotation to prevent camera flipping
     const maxVerticalRotation = Math.PI / 2 - 0.1;
     this.dummyCam.rotation.x = Math.max(
       -maxVerticalRotation,
@@ -183,15 +146,10 @@ class App {
     this.cameraQuaternion.copy(this.camera.quaternion);
   }
 
-  random(min, max) {
-    return Math.random() * (max - min) + min;
-  }
-
   initScene() {
     this.scene.background = new THREE.Color(0xa0a0a0);
     this.scene.fog = new THREE.Fog(0xa0a0a0, 50, 100);
 
-    // ground
     const ground = new THREE.Mesh(
       new THREE.PlaneBufferGeometry(200, 200),
       new THREE.MeshPhongMaterial({ color: 0x999999, depthWrite: false })
@@ -199,39 +157,29 @@ class App {
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
 
-    var grid = new THREE.GridHelper(200, 40, 0x000000, 0x000000);
+    const grid = new THREE.GridHelper(200, 40, 0x000000, 0x000000);
     grid.material.opacity = 0.2;
     grid.material.transparent = true;
     this.scene.add(grid);
 
     const geometry = new THREE.BoxGeometry(5, 5, 5);
     const material = new THREE.MeshPhongMaterial({ color: 0xaaaa22 });
-    const edges = new THREE.EdgesGeometry(geometry);
-    const line = new THREE.LineSegments(
-      edges,
-      new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 })
-    );
-
-    this.colliders = [];
 
     for (let x = -100; x < 100; x += 10) {
       for (let z = -100; z < 100; z += 10) {
-        if (x == 0 && z == 0) continue;
+        if (x === 0 && z === 0) continue;
         const box = new THREE.Mesh(geometry, material);
         box.position.set(x, 2.5, z);
-        const edge = line.clone();
-        edge.position.copy(box.position);
         this.scene.add(box);
-        this.scene.add(edge);
-        this.colliders.push(box);
+
+        const boxCollider = new THREE.Box3().setFromObject(box);
+        this.colliderBoxes.push(boxCollider);
       }
     }
   }
 
   setupVR() {
     this.renderer.xr.enabled = true;
-
-    // const button = new VRButton(this.renderer);
 
     const self = this;
 
@@ -250,42 +198,31 @@ class App {
     this.controller.addEventListener("selectstart", onSelectStart);
     this.controller.addEventListener("selectend", onSelectEnd);
 
-    this.controller.addEventListener( 'connected', function ( event ) {
+    this.controller.addEventListener("connected", function (event) {
+      const mesh = self.buildController.call(self, event.data);
+      mesh.scale.z = 0;
+      this.add(mesh);
+    });
 
-        const mesh = self.buildController.call(self, event.data );
-        mesh.scale.z = 0;
-        this.add( mesh );
-
-    } );
     this.controller.addEventListener("connected", (event) => {
       if ("gamepad" in event.data) {
         if ("axes" in event.data.gamepad) {
-          //we have a modern controller
           this.controller.gamepad = event.data.gamepad;
         }
       }
     });
+
     this.controller.addEventListener("disconnected", function () {
       this.remove(this.children[0]);
       self.controller = null;
       self.controllerGrip = null;
     });
+
     this.scene.add(this.controller);
 
     const controllerModelFactory = new XRControllerModelFactory();
 
     this.controllerGrip = this.renderer.xr.getControllerGrip(0);
-    // this.controllerGrip = this.renderer.xr.getControllerGrip( 1 );
-    // this.controllerGrip.add(
-    //   controllerModelFactory.createControllerModel(this.controllerGrip)
-    // );
-
-    const loader = new GLTFLoader()
-    const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath("../../libs/three/js/draco/");
-    loader.setDRACOLoader(dracoLoader);
-
-    
     this.scene.add(this.controllerGrip);
 
     this.dolly = new THREE.Object3D();
@@ -296,7 +233,6 @@ class App {
     this.dummyCam = new THREE.Object3D();
     this.camera.add(this.dummyCam);
   }
-
 
   buildController(data) {
     let geometry, material;
@@ -333,51 +269,6 @@ class App {
         return new THREE.Mesh(geometry, material);
     }
   }
- 
-
-  handleController(controller, dt) {
-    if (controller.gamepad) {
-      const thumbstickX = controller.gamepad.axes[2]; // Horizontal axis of thumbstick
-      const thumbstickY = controller.gamepad.axes[3]; // Vertical axis of thumbstick
-
-      // Use thumbstick input for movement
-      const speed = 0.5;
-      const direction = new THREE.Vector3(thumbstickX, 0, thumbstickY);
-
-      // Get the headset's orientation
-      const headsetQuaternion = this.dummyCam.getWorldQuaternion();
-
-      // Rotate the movement direction using the headset's orientation
-      direction.applyQuaternion(headsetQuaternion);
-
-      direction.normalize();
-      direction.multiplyScalar(speed);
-
-      // Calculate the new position based on thumbstick input
-      const newPos = this.dolly.position.clone().add(direction);
-
-      // Perform collision detection before updating the position
-      const wallLimit = 1.3;
-      const raycaster = new THREE.Raycaster();
-      raycaster.set(newPos.clone().add(new THREE.Vector3(0, 1, 0)), direction);
-
-      let blocked = false;
-      let intersect = raycaster.intersectObjects(this.colliders);
-      if (intersect.length > 0 && intersect[0].distance < wallLimit) {
-        blocked = true;
-      }
-
-      // Clamp the Y position within a range (e.g., between 0 and a maximum Y value)
-      const minY = 2; // Minimum Y value (ground level)
-      const maxY = 5; // Maximum Y value (adjust as needed)
-
-      newPos.y = Math.min(maxY, Math.max(minY, newPos.y));
-
-      if (!blocked) {
-        this.dolly.position.copy(newPos);
-      }
-    }
-  }
 
   resize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -388,36 +279,8 @@ class App {
   render() {
     const dt = this.clock.getDelta();
     this.stats.update();
-
-    // Update shooting cooldown timer
-    if (this.shootingCooldown > 0) {
-      this.shootingCooldown -= dt;
-    }
-
-    if (this.controller) {
-      this.handleController(this.controller, dt);
-      // Check if the trigger button is pressed for shooting in VR mode
-      if (this.controller.userData.selectPressed && !this.shooting) {
-        this.shoot();
-        this.shooting = true;
-      } else if (!this.controller.userData.selectPressed) {
-        this.shooting = false;
-      }
-    }
-
-  
-     // Update and render bullets
-     this.bullets.forEach((bullet) => bullet.update(this.clock.getDelta()));
-
-    // Update the position and orientation of the weapon model
-    if (this.weaponModel) {
-      // Set the weapon's position and orientation relative to the camera
-      this.weaponModel.position.set(0, -0.1, -0.15); // Adjust position as needed
-      this.weaponModel.rotation.set(0, Math.PI, 0); // Adjust rotation as needed
-    }
-
     this.renderer.render(this.scene, this.camera);
   }
 }
 
-export { App };
+export {App};
