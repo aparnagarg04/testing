@@ -165,8 +165,8 @@ class App {
     const geometry = new THREE.BoxGeometry(5, 5, 5);
     const material = new THREE.MeshPhongMaterial({ color: 0xaaaa22 });
 
-    for (let x = -100; x < 100; x += 10) {
-      for (let z = -100; z < 100; z += 10) {
+    for (let x = -100; x < 100; x += 20) {
+      for (let z = -100; z < 100; z += 20) {
         if (x === 0 && z === 0) continue;
         const box = new THREE.Mesh(geometry, material);
         box.position.set(x, 2.5, z);
